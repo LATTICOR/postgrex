@@ -635,7 +635,7 @@ defmodule Postgrex.Protocol do
         # "BEGIN;SET LOCAL ..." in one round trip. It must start a transaction and return no rows.
         statement = Keyword.get(opts, :begin_statement, "BEGIN")
         result = handle_transaction(statement, opts, s)
-        handle_disconnect_retry(result)
+        handle_disconnect_retry(opened_transaction(result))
 
       :savepoint when postgres == :transaction ->
         statement = "SAVEPOINT postgrex_savepoint"
@@ -3542,6 +3542,16 @@ defmodule Postgrex.Protocol do
     do: {:disconnect_and_retry, err, s}
 
   defp handle_disconnect_retry(other), do: other
+
+  # A `:begin_statement` must leave a transaction open, or the body would autocommit statement by
+  # statement; its extra command tags are folded into the `:begin` the caller expects.
+  defp opened_transaction({:ok, result, %{postgres: :transaction} = s}),
+    do: {:ok, %{result | command: :begin}, s}
+
+  defp opened_transaction({:ok, _result, s}),
+    do: {:disconnect, RuntimeError.exception("begin_statement did not open a transaction"), s}
+
+  defp opened_transaction(other), do: other
 
   defp sync_recv(s, status, buffer) do
     %{postgres: postgres, transactions: transactions} = s
