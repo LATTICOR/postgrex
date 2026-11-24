@@ -631,7 +631,9 @@ defmodule Postgrex.Protocol do
   def handle_begin(opts, %{postgres: postgres} = s) do
     case Keyword.get(opts, :mode, :transaction) do
       :transaction when postgres == :idle ->
-        statement = "BEGIN"
+        # `:begin_statement` lets a caller open the transaction with its own simple-query text, e.g.
+        # "BEGIN;SET LOCAL ..." in one round trip. It must start a transaction and return no rows.
+        statement = Keyword.get(opts, :begin_statement, "BEGIN")
         result = handle_transaction(statement, opts, s)
         handle_disconnect_retry(result)
 
